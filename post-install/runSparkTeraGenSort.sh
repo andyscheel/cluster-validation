@@ -1,13 +1,22 @@
 #!/bin/bash
 # jbenninghoff 2017-Apr-14  vi: set ai et sw=3 tabstop=3:
 
+vcores=$(maprcli dashboard info -json |awk -F: '/total_vcores/{printf("%i\n", $2)}')
+vram=$(maprcli dashboard info -json |awk -F: '/total_memory_mb/{printf("%i\n", $2)}')
+vtasks=$((vram/4096))
+ecores=$((vcores/vtasks))
+[[ "$ecores" -eq 0 ]] && ecores=1
 tsjar=spark-terasort-1.1-SNAPSHOT-jar-with-dependencies.jar
 tsjar=spark-terasort-1.1-SNAPSHOT.jar
 #PATH=/opt/mapr/spark/spark-1.6.1/bin:$PATH
-PATH=/opt/mapr/spark/spark-2.1.0/bin:$PATH
+spkhome=$(find /opt/mapr/spark -maxdepth 1 -type d -name spark-\* \
+         |sort -n |tail -1)
+PATH=$spkhome/bin:$PATH
+#spkjar=$(find $spkhome -name spark-examples\*.jar)
+#spkclass=org.apache.spark.examples.SparkPi
 
 #spark-submit --master yarn-client \
-spark-submit --master yarn --deploy-mode client \
+spark-submit --master yarn --deploy-mode cluster \
   --name 'TeraGen' \
   --class com.github.ehiggs.spark.terasort.TeraGen \
   --num-executors 10 \
@@ -19,15 +28,17 @@ spark-submit --master yarn --deploy-mode client \
 
 : << '--BLOCK-COMMENT--'
 exit
+  --executor-cores 4
+  --executor-memory 16G
 --BLOCK-COMMENT--
 
 #export DRIVER_MEMORY=1g
 #spark-submit --master yarn-cluster \
-spark-submit --master yarn --deploy-mode cluster --driver-memory 1g \
+spark-submit --master yarn --deploy-mode client --driver-memory 1g \
   --name 'TeraSort' \
   --class com.github.ehiggs.spark.terasort.TeraSort \
-  --num-executors 5 \
-  --executor-cores 2 \
+  --num-executors $vtasks \
+  --executor-cores $ecores \
   --executor-memory 4G \
   $tsjar /user/$USER/spark-terasort /user/$USER/terasort-output
 #Many small executors seems to perform better than fewer large executors
